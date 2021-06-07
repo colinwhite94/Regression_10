@@ -1,0 +1,135 @@
+---
+title: "Hw 10"
+author: "Colin White"
+date: "4/14/2021"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+
+```{r}
+library(forecast)
+
+studioC <- read.table("~/Desktop/1A School/1A Winter 2021/STAT330/HW10/StudioC.csv", sep =",",header = TRUE)
+#attach(StudioC)
+```
+#1
+*We want to use past measures of popularity (Google index) to predict future popularity of studio C.
+*We will use time series models becasue we beleive that we can leverage temporal (time) autocorelation to make better predictions. 
+
+#2
+* There is a strong autocorrelation, and  it seems to have a seasonality
+*Multiple regression methods that assume independance are likeluy not appropriate because there is autocorrelaiton. 
+
+```{r}
+plot(studioC$Week, studioC$Google_index, type = "o", xlab="Week", ylab="Google Index", cex.lab = 1.4, pch = 19)
+abline(v = (1:4)*26 - 14, col = "red", lwd = 1.5, lty = 2)
+Acf(studioC$Google_index,lag.max = 30)
+```
+
+
+
+
+#3
+* Below, we fit all the models
+* We use AIC becasue we are using the model for prediction  and AIC is derived with prediciotn as the goal. 
+```{r}
+
+Google_ts = ts(studioC$Google_index, frequency = 26)
+
+ar1 = forecast::Arima(studioC$Google_index, order = c(1,0,0))
+ma1 = forecast::Arima(studioC$Google_index, order = c(0,0,1))
+arima111 = forecast::Arima(studioC$Google_index, order = c (1,1,1))
+
+
+
+
+sarima111 = forecast::Arima(studioC$Google_index, order = c (1,1,1), seasonal = list(order = c (1,1,1), period = 26))
+
+```
+
+* AR(1) AIC = `r ar1$aic`
+* MA(1) AIC = `r ma1$aic`
+* ARMA(1,1) AIC = `r arima111$aic`
+* SARIMA(1,1,1)$\times$(1,1,1)$_{26}$ AIC = `r sarima111$aic
+
+
+#4
+
+The fit looks good. 
+
+```{r}
+plot(studioC$Week, studioC$Google_index, pch = 20)
+lines(studioC$Week, sarima111$fitted, col = "red")
+legend("topleft", c("data", "Model fit"), col = c("black", "red"), lwd = c(NA, 4), pch = c(20,NA), cex = 1.4)
+
+
+```
+
+
+#5
+
+* l - we dont have to worry about linearity becasue we dont have any quantitaitve (or any) covariates. 
+* I - Independence - after time series terms are included we assume that $\epsilon_t$ are all independant. This is justified by the ACF plot, even though there are a couple ACF peaks just outside the significance bounds.
+* N - Normality - we argue that this looks ok based on the histogram of residuals
+* E - Equal variance - we thing that the fitted vs residuals look oh, so I argue that the equal variabce assumption is met. 
+
+
+Becasue of Seasonal lags, the model isnt fully initialized untill after the first season. 
+```{r}
+acf(sarima111$residuals[-c(1:26)])
+
+
+
+#hist
+hist(sarima111$residuals[-c(1:26)] / sd(sarima111$residuals[-c(1:26)]), breaks = 20, freq = FALSE)
+curve(dnorm(x), from = -4, to =4, add = TRUE, col = "red", lwd = 2)
+
+
+#fitted vs r
+
+par(mar = c(4,4,1,1))
+plot(c(sarima111$fitted[-(1:26)]),c(sarima111$residuals[-(1:26)]), xlab = "fitted", ylab ="residual", pch = 19)
+
+abline(h = 0, col = "red")
+```
+
+
+#6
+```{r}
+
+
+test.set = studioC$Google_index[76:length(studioC$Google_index)]
+train.set = studioC$Google_index[-c(76:length(studioC$Google_index))]
+
+
+sarima_train = Arima(train.set, order = c(1,1,1), season = list(order = c(1,1,1), period = 26)) 
+
+sarima_test_pred = forecast(sarima_train, h = 26)
+
+plot(sarima_test_pred)
+points(studioC$Week, studioC$Google_index)
+
+
+bias <- mean(sarima_test_pred$mean - test.set)
+bias
+rpmse <- sqrt(mean((test.set-sarima_test_pred$mean)^2))
+rpmse
+
+
+diff(range(studioC$Google_index))
+sd(studioC$Google_index)
+```
+
+#7
+```{r}
+season_five = forecast(sarima111, h = 26)
+plot(season_five)
+points(studioC$Week, studioC$Google_index)
+```
